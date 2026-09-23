@@ -21,7 +21,9 @@
   // flow lives, so flows are organized on disk with no "Save As" step. It is NOT
   // shown under TOURNAMENTS (it's the broad home, not a tournament); tournaments
   // are the sub-folders inside its `tournaments/` folder.
-  const LIBRARY_NAME = "Nimbus";
+  // ⚠ LAB BUILD: its own folder. "Nimbus" belongs to the release build, and the
+  // Rust side refuses to write there (lab_guard in lib.rs).
+  const LIBRARY_NAME = "Nimbus Lab";
   // Pre-rename name, migrated to LIBRARY_NAME on first launch of this build.
   const OLD_LIBRARY_NAME = "Nimbus Flows";
   // Sub-folder of the home library whose child folders are the tournaments.
@@ -185,7 +187,9 @@
       // ── One-time rename of the home folder ──
       const homeExists = await invoke<boolean>("dir_exists", { path: homePath });
       const oldExists = await invoke<boolean>("dir_exists", { path: oldPath });
-      if (!homeExists && oldExists) {
+      // ⚠ LAB BUILD: never run the "Nimbus Flows" → home rename — it MOVES a
+      // folder the release build may still own.
+      if (false && !homeExists && oldExists) {
         try {
           await invoke("move_path", { from: oldPath, to: homePath });
           await repointRoundsUnder(oldPath, homePath);

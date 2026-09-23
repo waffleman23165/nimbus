@@ -12,6 +12,10 @@ export interface UpdateInfo {
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
   if (!("__TAURI_INTERNALS__" in window)) return null;
+  // ⚠ LAB BUILD: never update. The release updater would replace Lab with the
+  // public build; Lab is reinstalled by hand from the lab installer instead.
+  const LAB_BUILD = true;
+  if (LAB_BUILD) return null;
   try {
     const { check } = await import("@tauri-apps/plugin-updater");
     const update = await check();
