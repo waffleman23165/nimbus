@@ -712,7 +712,9 @@ class SessionStore {
       window.addEventListener("pagehide", this.flush);
     }
     this.ch = openChannel(
-      `nimbus-flow-${this.code}`,
+      // ⚠ LAB BUILD: its own channel, so a Lab client can never pair with a
+      // release client and send it data the release build doesn't expect.
+      `nimbus-lab-flow-${this.code}`,
       this.clientId,
       { email: auth.email, role: this.role },
       {

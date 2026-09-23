@@ -37,6 +37,7 @@ fn file_from_args() -> Option<String> {
 /// Renaming the app changes its data dir. On first launch under a new
 /// identifier, carry over rounds/config from a previous install so users never
 /// "lose" their flows and settings across a rename.
+#[allow(dead_code)] // LAB: not called, see setup()
 fn migrate_old_data(app: &tauri::AppHandle) {
     let Ok(new_dir) = app.path().app_data_dir() else {
         return;
@@ -142,9 +143,32 @@ fn delete_round(app: tauri::AppHandle, id: String) -> Result<(), String> {
     fs::remove_file(path).map_err(|e| e.to_string())
 }
 
+/// ⚠ LAB BUILD: refuse to change anything inside the RELEASE build's home
+/// folder (`Documents/Nimbus`). Lab has its own (`Documents/Nimbus Lab`); two
+/// apps autosaving one flow file is the shape of the 2026-08-24 data loss.
+/// Reading is still allowed. Compared per path component, case-insensitively,
+/// so `Documents/Nimbus Lab/...` is not caught by it.
+fn lab_guard(app: &tauri::AppHandle, path: &str) -> Result<(), String> {
+    let Ok(docs) = app.path().document_dir() else {
+        return Ok(());
+    };
+    let norm = |p: &Path| -> Vec<String> {
+        p.components()
+            .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+            .collect()
+    };
+    let release = norm(&docs.join("Nimbus"));
+    let target = norm(Path::new(path));
+    if target.len() >= release.len() && target[..release.len()] == release[..] {
+        return Err("Nimbus Lab does not write inside the release Nimbus folder".into());
+    }
+    Ok(())
+}
+
 /// Write text to any path the user chose in a save dialog (save-to-location).
 #[tauri::command]
-fn write_text_file(path: String, contents: String) -> Result<(), String> {
+fn write_text_file(app: tauri::AppHandle, path: String, contents: String) -> Result<(), String> {
+    lab_guard(&app, &path)?;
     fs::write(path, contents).map_err(|e| e.to_string())
 }
 
@@ -156,7 +180,8 @@ fn read_text_file(path: String) -> Result<String, String> {
 
 /// Binary read/write for .xlsx flow files.
 #[tauri::command]
-fn write_binary_file(path: String, bytes: Vec<u8>) -> Result<(), String> {
+fn write_binary_file(app: tauri::AppHandle, path: String, bytes: Vec<u8>) -> Result<(), String> {
+    lab_guard(&app, &path)?;
     fs::write(path, bytes).map_err(|e| e.to_string())
 }
 
@@ -177,7 +202,8 @@ struct FlowFile {
 }
 
 #[tauri::command]
-fn create_dir(path: String) -> Result<(), String> {
+fn create_dir(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    lab_guard(&app, &path)?;
     fs::create_dir_all(path).map_err(|e| e.to_string())
 }
 
@@ -308,12 +334,15 @@ fn list_subdirs(path: String) -> Result<Vec<SubDir>, String> {
 /// Move (or rename) a file or folder — used to move a flow between tournament
 /// folders, and to rename the home library folder in the one-time migration.
 #[tauri::command]
-fn move_path(from: String, to: String) -> Result<(), String> {
+fn move_path(app: tauri::AppHandle, from: String, to: String) -> Result<(), String> {
+    lab_guard(&app, &from)?;
+    lab_guard(&app, &to)?;
     fs::rename(from, to).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_path(path: String) -> Result<(), String> {
+fn delete_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    lab_guard(&app, &path)?;
     fs::remove_file(path).map_err(|e| e.to_string())
 }
 
@@ -451,15 +480,13 @@ pub fn run() {
             disable_webview_zoom_control(_webview);
         })
         .setup(|app| {
-            migrate_old_data(app.handle());
-            // Register Nimbus as a CardMirror "flow app": a queue plus a loopback
-            // server the Nimbus CardMirror plugin pulls cards from. Best effort —
-            // if the bind fails, sends simply fall back to the clipboard, and the
-            // built-in speech doc is unaffected either way.
+            // ⚠ LAB BUILD: no migrate_old_data (it would copy an old install's
+            // rounds — whose filePaths point at REAL flow files — into Lab), and
+            // no flowapp::start (it would overwrite the release build's
+            // nimbus.json / nimbus.session.json in the shared bridge folder).
             let queue =
                 std::sync::Arc::new(std::sync::Mutex::new(Vec::<flowapp::QueuedCard>::new()));
             app.manage(flowapp::FlowQueue(queue.clone()));
-            flowapp::start(app.handle().clone(), queue);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
