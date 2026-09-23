@@ -1,0 +1,57 @@
+name: Nimbus Lab (Mac)
+
+# ⚠ LAB ONLY — drop this file when lab work merges into main.
+#
+# Builds the experimental "Nimbus Lab" app for macOS whenever a lab/* branch is
+# pushed, and keeps the .dmg files as downloadable run artifacts. It creates NO
+# release and NO tag, and uses no signing secrets, so it cannot touch the public
+# Nimbus release or anyone's auto-update. (Release builds come only from `v*`
+# tags on Asaw2011/nimbus — see release.yml.)
+on:
+  push:
+    branches:
+      - "lab/**"
+  workflow_dispatch:
+
+jobs:
+  mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin # Apple Silicon (M1 and later)
+            label: apple-silicon
+          - target: x86_64-apple-darwin # Intel Macs
+            label: intel
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build
+        run: npx tauri build --target ${{ matrix.target }} --bundles dmg
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: nimbus-lab-mac-${{ matrix.label }}-${{ github.sha }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 30
